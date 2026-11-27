@@ -1,0 +1,31 @@
+name: Roxy Instagram publisher (free, direct API)
+
+on:
+  schedule:
+    - cron: "40 * * * *"   # every hour at :40 UTC; posts only when a Reel is due
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish one due Reel
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+        run: python3 scripts/publish_instagram.py
+      - name: Save queue
+        run: |
+          if ! git diff --quiet queue/instagram.json; then
+            git config user.name "roxy-bot"
+            git config user.email "roxy-bot@users.noreply.github.com"
+            git commit -m "Instagram queue update" queue/instagram.json
+            git push
+          fi
