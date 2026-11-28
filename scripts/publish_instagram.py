@@ -48,7 +48,7 @@ def main():
         print("Nothing due."); return
     item = sorted(due, key=lambda x: x["publish_at"])[0]
 
-    uid = os.environ.get("IG_USER_ID", "").strip()
+    uid = os.environ.get("IG_USER_ID", "").strip() or "17841469927732383"  # @roxy.why
     if not uid:
         if "graph.instagram.com" in API:
             me = call("GET", f"{API}/me", {"fields": "user_id,username", "access_token": token})
