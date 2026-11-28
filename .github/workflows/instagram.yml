@@ -20,6 +20,7 @@ jobs:
       - name: Publish one due Reel
         env:
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: python3 scripts/publish_instagram.py
       - name: Save queue
         run: |

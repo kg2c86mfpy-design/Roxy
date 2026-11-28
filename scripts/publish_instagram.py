@@ -4,11 +4,13 @@ Runs from GitHub Actions on a schedule. Reads queue/instagram.json, publishes at
 per run (and never two within 20 hours), marks it done, and the workflow commits the queue back.
 
 Secrets (set by the account owner in GitHub > Settings > Secrets and variables > Actions):
-  IG_TOKEN  — long-lived Instagram user access token for @roxy.why (valid ~60 days, refreshed here).
+  IG_TOKEN    — access token for @roxy.why (unified login system-user token: never expires).
+  IG_USER_ID  — optional: the Instagram account id (found automatically when possible).
 """
 import json, os, sys, time, datetime as dt, urllib.parse, urllib.request
 
-API = "https://graph.instagram.com/v21.0"
+# Unified-login (Facebook Login for Business) tokens use graph.facebook.com; Instagram-login tokens use graph.instagram.com.
+API = os.environ.get("IG_API", "https://graph.facebook.com/v21.0")
 REPO = os.environ.get("GITHUB_REPOSITORY", "kg2c86mfpy-design/Roxy")
 SHA = os.environ.get("GITHUB_SHA", "main")
 QUEUE = "queue/instagram.json"
@@ -36,12 +38,6 @@ def main():
     now = dt.datetime.now(dt.timezone.utc)
     q = json.load(open(QUEUE))
 
-    # keep the token alive (allowed once it is >24 h old; harmless otherwise)
-    try:
-        call("GET", "https://graph.instagram.com/refresh_access_token",
-             {"grant_type": "ig_refresh_token", "access_token": token})
-    except SystemExit as e:
-        print("token refresh skipped:", e)
 
     done = [dt.datetime.fromisoformat(x["published_at"]) for x in q if x.get("published_at")]
     if done and (now - max(done)).total_seconds() < MIN_GAP_H * 3600:
@@ -52,9 +48,18 @@ def main():
         print("Nothing due."); return
     item = sorted(due, key=lambda x: x["publish_at"])[0]
 
-    me = call("GET", f"{API}/me", {"fields": "user_id,username", "access_token": token})
-    uid = me.get("user_id") or me.get("id")
-    print("Publishing", item["id"], "to @" + me.get("username", "?"))
+    uid = os.environ.get("IG_USER_ID", "").strip()
+    if not uid:
+        if "graph.instagram.com" in API:
+            me = call("GET", f"{API}/me", {"fields": "user_id,username", "access_token": token})
+            uid = me.get("user_id") or me.get("id")
+        else:
+            pages = call("GET", f"{API}/me/accounts", {"fields": "instagram_business_account{id,username}", "access_token": token})
+            igs = [p["instagram_business_account"] for p in pages.get("data", []) if p.get("instagram_business_account")]
+            mine = [a for a in igs if a.get("username") == "roxy.why"] or igs
+            if not mine: raise SystemExit("No Instagram account found for this token; set the IG_USER_ID secret.")
+            uid = mine[0]["id"]
+    print("Publishing", item["id"], "to Instagram user", uid)
 
     video_url = f"https://raw.githubusercontent.com/{REPO}/{SHA}/{item['video']}"
     c = call("POST", f"{API}/{uid}/media", {"media_type": "REELS", "video_url": video_url,
